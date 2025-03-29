@@ -27,6 +27,7 @@ export function App() {
 	const [directoryInput, setDirectoryInput] = useState("");
 	const [isSyncing, setIsSyncing] = useState(false);
 	const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
+	const [overflowingFiles, setOverflowingFiles] = useState<Set<string>>(new Set());
 
 	// Function to perform sync
 	const performSync = useCallback(async () => {
@@ -127,6 +128,24 @@ export function App() {
 		};
 	}, [autoSyncEnabled, performSync]);
 
+	useEffect(() => {
+		// Check for text overflow
+		const checkOverflow = () => {
+			const newOverflowingFiles = new Set<string>();
+			document.querySelectorAll("[data-filename-container]").forEach((container) => {
+				const span = container.querySelector("[data-filename-text]") as HTMLElement;
+				if (span && span.scrollWidth > span.offsetWidth) {
+					newOverflowingFiles.add(span.dataset.filenameText || "");
+				}
+			});
+			setOverflowingFiles(newOverflowingFiles);
+		};
+
+		checkOverflow();
+		window.addEventListener("resize", checkOverflow);
+		return () => window.removeEventListener("resize", checkOverflow);
+	}, [framerFiles]);
+
 	const handleDirectoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setDirectoryInput(e.target.value);
 	};
@@ -172,10 +191,11 @@ export function App() {
 	}
 
 	return (
-		<main className="size-full overflow-hidden flex-col">
+		<main className="size-full overflow-hidden flex-col select-none">
 			<div className="absolute top-0 inset-x-3 h-px bg-divider" />
 			<div className="p-3 w-full flex-col gap-3 flex-1 overflow-y-auto overflow-x-hidden">
-				<p className="">Two-way sync between Framer and files on your computer.</p>
+				<p>Two-way sync between Framer and files on your computer.</p>
+				<div className="w-full h-px shrink-0 bg-divider" />
 				<div className="flex-col gap-2 w-full">
 					<input
 						type="text"
@@ -190,7 +210,7 @@ export function App() {
 				</div>
 				{state.localDirectory && (
 					<div className="p-2.5 flex-col gap-1 bg-secondary rounded">
-						<span className="font-semibold">Selected:</span>
+						<span className="font-semibold">Current Directory:</span>
 						<p className="break-words whitespace-normal flex-col">{state.localDirectory}</p>
 					</div>
 				)}
@@ -200,23 +220,40 @@ export function App() {
 					{framerFiles.map((file) => {
 						const status = state.fileMappings.find((m) => m.framerFileId === file.id)?.status
 							.status;
+						const isOverflowing = overflowingFiles.has(file.name);
 						return (
 							<div
 								key={file.id}
 								className="flex-row justify-between items-center px-2.5 py-2 gap-2 bg-secondary rounded"
 							>
+								<div className="relative flex-1 min-w-0" data-filename-container>
+									<span
+										data-filename-text={file.name}
+										className={classNames(
+											"whitespace-nowrap overflow-hidden block w-full",
+											isOverflowing ? "text-right" : "text-left"
+										)}
+										style={isOverflowing ? { direction: "rtl" } : undefined}
+										title={file.name}
+									>
+										{file.name}
+									</span>
+									<div
+										className={classNames(
+											"absolute inset-y-0 w-8",
+											isOverflowing ? "left-0" : "right-0"
+										)}
+										style={{
+											opacity: isOverflowing ? 0.9 : 0,
+											background: isOverflowing
+												? "linear-gradient(to left, transparent, var(--color-bg-secondary))"
+												: "linear-gradient(to right, transparent, var(--color-bg-secondary))",
+										}}
+									/>
+								</div>
 								<span
 									className={classNames(
-										"whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left"
-									)}
-									title={file.name}
-									style={{ direction: "rtl" }}
-								>
-									{file.name}
-								</span>
-								<span
-									className={classNames(
-										"text-xs rounded capitalize",
+										"text-xs rounded capitalize shrink-0",
 										status === "error" ? "text-error" : "text-secondary"
 									)}
 								>

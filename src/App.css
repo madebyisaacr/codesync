@@ -47,3 +47,7 @@ input {
 strong {
 	@apply text-primary font-semibold;
 }
+
+button {
+	@apply font-semibold;
+}
