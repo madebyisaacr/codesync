@@ -45,6 +45,18 @@ export function App() {
 		initialize();
 	}, []);
 
+	// Subscribe to code file changes
+	useEffect(() => {
+		// Set up an interval to check for file changes
+		const interval = setInterval(async () => {
+			const currentFiles = await getFramerCodeFiles();
+			setFramerFiles(currentFiles);
+		}, 1000); // Check every second
+
+		// Cleanup interval on unmount
+		return () => clearInterval(interval);
+	}, []);
+
 	const handleDirectoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		setDirectoryInput(e.target.value);
 	};
@@ -79,6 +91,9 @@ export function App() {
 		try {
 			// Get all current files from Framer
 			const files = await getFramerCodeFiles();
+
+			// Update the files list to reflect current state
+			setFramerFiles(files);
 
 			// Sync all files at once
 			const syncStatus = await syncFileToLocal(files, state.localDirectory as string);
