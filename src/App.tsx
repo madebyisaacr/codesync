@@ -9,6 +9,7 @@ import {
 	savePluginState,
 	performTwoWaySync,
 } from "./utils";
+import classNames from "classnames";
 
 framer.showUI({
 	position: "top left",
@@ -164,64 +165,81 @@ export function App() {
 
 	if (isLoading) {
 		return (
-			<div className="container">
+			<div className="p-5">
 				<p>Loading...</p>
 			</div>
 		);
 	}
 
 	return (
-		<div className="container">
-			<div className="header">
-				<h1 className="title">CodeSync</h1>
-				<p className="description">Two-way sync between Framer and your local files</p>
+		<main className="size-full overflow-hidden flex-col">
+			<div className="absolute top-0 inset-x-3 h-px bg-divider" />
+			<div className="p-3 w-full flex-col gap-3 flex-1 overflow-y-auto overflow-x-hidden">
+				<p className="">Two-way sync between Framer and files on your computer.</p>
+				<div className="flex-col gap-2 w-full">
+					<input
+						type="text"
+						value={directoryInput}
+						onChange={handleDirectoryChange}
+						placeholder="Enter directory path"
+						className="w-full"
+					/>
+					<button className="w-full framer-button-primary" onClick={handleSaveDirectory}>
+						Save Directory
+					</button>
+				</div>
+				{state.localDirectory && (
+					<div className="p-2.5 flex-col gap-1 bg-secondary rounded">
+						<span className="font-semibold">Selected:</span>
+						<p className="break-words whitespace-normal flex-col">{state.localDirectory}</p>
+					</div>
+				)}
+				<div className="w-full h-px shrink-0 bg-divider" />
+				<div className="flex-col gap-2">
+					<span className="font-semibold">Code Files:</span>
+					{framerFiles.map((file) => {
+						const status = state.fileMappings.find((m) => m.framerFileId === file.id)?.status
+							.status;
+						return (
+							<div
+								key={file.id}
+								className="flex-row justify-between items-center px-2.5 py-2 gap-2 bg-secondary rounded"
+							>
+								<span
+									className={classNames(
+										"whitespace-nowrap overflow-hidden text-ellipsis flex-1 text-left"
+									)}
+									title={file.name}
+									style={{ direction: "rtl" }}
+								>
+									{file.name}
+								</span>
+								<span
+									className={classNames(
+										"text-xs rounded capitalize",
+										status === "error" ? "text-error" : "text-secondary"
+									)}
+								>
+									{status || "Not Synced"}
+								</span>
+							</div>
+						);
+					})}
+				</div>
 			</div>
-
-			<div className="directoryInput">
-				<input
-					type="text"
-					value={directoryInput}
-					onChange={handleDirectoryChange}
-					placeholder="Enter directory path"
-					className="textInput"
-				/>
-				<button className="button" onClick={handleSaveDirectory}>
-					Save Directory
+			<div className="flex-col gap-2 p-3 w-full relative">
+				<div className="absolute top-0 inset-x-3 h-px bg-divider" />
+				<button
+					className="relative framer-button-primary"
+					onClick={toggleAutoSync}
+					disabled={!state.localDirectory}
+				>
+					{isSyncing && (
+						<span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+					)}
+					{isSyncing ? "Syncing..." : autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
 				</button>
 			</div>
-
-			{state.localDirectory && (
-				<div className="selectedDirectory">Selected: {state.localDirectory}</div>
-			)}
-
-			<div className="fileList">
-				{framerFiles.map((file) => (
-					<div key={file.id} className="fileItem">
-						<span className="fileName" title={file.name}>
-							{file.name}
-						</span>
-						<span
-							className={`syncStatus ${
-								state.fileMappings.find((m) => m.framerFileId === file.id)?.status.status ||
-								"not-synced"
-							}`}
-						>
-							{state.fileMappings.find((m) => m.framerFileId === file.id)?.status.status ||
-								"Not synced"}
-						</span>
-					</div>
-				))}
-			</div>
-
-			<button
-				className={`button syncButton ${isSyncing ? "syncing" : ""} ${
-					autoSyncEnabled ? "active" : ""
-				}`}
-				onClick={toggleAutoSync}
-				disabled={!state.localDirectory}
-			>
-				{isSyncing ? "Syncing..." : autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
-			</button>
-		</div>
+		</main>
 	);
 }
