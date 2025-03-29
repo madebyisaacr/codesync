@@ -1,8 +1,14 @@
 import { framer } from "framer-plugin";
 import { useEffect, useState } from "react";
 import "./App.css";
-import { CodeFile, FileMapping, PluginState } from "./types";
-import { getFramerCodeFiles, loadPluginState, savePluginState, syncFileToLocal } from "./utils";
+import { CodeFile, FileMapping, PluginState, SyncStatus } from "./types";
+import {
+	getFramerCodeFiles,
+	getLocalPathFromFramerName,
+	loadPluginState,
+	savePluginState,
+	syncFileToLocal,
+} from "./utils";
 
 framer.showUI({
 	position: "top left",
@@ -65,37 +71,43 @@ export function App() {
 
 	const handleSync = async () => {
 		if (!state.localDirectory) {
-			framer.notify("Please set a directory first", { variant: "warning" });
-			return;
-		}
-
-		if (isSyncing) {
-			framer.notify("Sync already in progress", { variant: "warning" });
+			framer.notify("Please set a directory first");
 			return;
 		}
 
 		setIsSyncing(true);
 		try {
-			const newMappings: FileMapping[] = [];
-			for (const file of framerFiles) {
-				const syncStatus = await syncFileToLocal(file, state.localDirectory);
-				newMappings.push({
-					framerFileId: file.id,
-					localPath: file.name,
-					status: syncStatus,
-				});
+			// Get all current files from Framer
+			const files = await getFramerCodeFiles();
+
+			// Sync all files at once
+			const syncStatus = await syncFileToLocal(files, state.localDirectory as string);
+
+			if (syncStatus.status === "error") {
+				framer.notify(syncStatus.error || "Failed to sync files");
+				return;
 			}
 
-			const newState = {
-				...state,
+			// Update file mappings
+			const newMappings: FileMapping[] = files.map((file) => ({
+				framerFileId: file.id,
+				localPath: getLocalPathFromFramerName(file.name, state.localDirectory as string),
+				status: {
+					status: "synced" as const,
+					lastSync: new Date(),
+				},
+			}));
+
+			// Update state
+			setState((prev) => ({
+				...prev,
 				fileMappings: newMappings,
-			};
-			setState(newState);
-			await savePluginState(newState);
-			framer.notify("Files synced successfully", { variant: "success" });
+			}));
+
+			framer.notify("Files synced successfully");
 		} catch (error) {
-			console.error("Failed to sync files:", error);
-			framer.notify("Failed to sync files", { variant: "error" });
+			console.error("Error during sync:", error);
+			framer.notify("Failed to sync files");
 		} finally {
 			setIsSyncing(false);
 		}

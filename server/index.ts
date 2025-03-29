@@ -31,24 +31,58 @@ app.post("/set-directory", async (req, res) => {
 	}
 });
 
-// Write a file
-app.post("/write-file", async (req, res) => {
+// Full directory sync
+app.post("/sync-directory", async (req, res) => {
 	try {
 		if (!currentDirectory) {
 			return res.status(400).json({ error: "Directory not set" });
 		}
 
-		const { fileName, content } = req.body;
-		if (!fileName || content === undefined) {
-			return res.status(400).json({ error: "File name and content are required" });
+		const { files } = req.body;
+		if (!Array.isArray(files)) {
+			return res.status(400).json({ error: "Files array is required" });
 		}
 
-		const filePath = path.join(currentDirectory, fileName);
-		await fs.writeFile(filePath, content, "utf-8");
-		res.json({ success: true, filePath });
+		// Get list of existing files in the directory
+		const existingFiles = await fs.readdir(currentDirectory);
+
+		// Create a set of filenames from Framer
+		const framerFiles = new Set(files.map((f) => f.name));
+
+		// Delete files that don't exist in Framer
+		const deletedFiles = [];
+		for (const file of existingFiles) {
+			if (!framerFiles.has(file)) {
+				try {
+					await fs.unlink(path.join(currentDirectory, file));
+					deletedFiles.push(file);
+					console.log(`Deleted file: ${file}`);
+				} catch (error) {
+					console.error(`Error deleting file ${file}:`, error);
+				}
+			}
+		}
+
+		// Write or update files from Framer
+		const updatedFiles = [];
+		for (const file of files) {
+			try {
+				await fs.writeFile(path.join(currentDirectory, file.name), file.content, "utf-8");
+				updatedFiles.push(file.name);
+				console.log(`Updated file: ${file.name}`);
+			} catch (error) {
+				console.error(`Error writing file ${file.name}:`, error);
+			}
+		}
+
+		res.json({
+			success: true,
+			deletedFiles,
+			updatedFiles,
+		});
 	} catch (error) {
-		console.error("Error writing file:", error);
-		res.status(500).json({ error: "Failed to write file" });
+		console.error("Error syncing directory:", error);
+		res.status(500).json({ error: "Failed to sync directory" });
 	}
 });
 

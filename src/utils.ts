@@ -95,7 +95,10 @@ export async function writeFileToServer(fileName: string, content: string): Prom
 	}
 }
 
-export async function syncFileToLocal(file: CodeFile, localDirectory: string): Promise<SyncStatus> {
+export async function syncFileToLocal(
+	files: CodeFile[],
+	localDirectory: string
+): Promise<SyncStatus> {
 	try {
 		// First ensure the server knows about our directory
 		const directorySet = await setServerDirectory(localDirectory);
@@ -106,21 +109,29 @@ export async function syncFileToLocal(file: CodeFile, localDirectory: string): P
 			};
 		}
 
-		// Write the file
-		const success = await writeFileToServer(file.name, file.content);
-		if (!success) {
-			return {
-				status: "error",
-				error: "Failed to write file to local system",
-			};
+		// Sync all files at once
+		const response = await fetch(`${SERVER_URL}/sync-directory`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ files }),
+		});
+
+		if (!response.ok) {
+			const error = await response.json();
+			throw new Error(error.error || "Failed to sync directory");
 		}
+
+		const result = await response.json();
+		console.log("Sync result:", result);
 
 		return {
 			status: "synced",
 			lastSync: new Date(),
 		};
 	} catch (error) {
-		console.error("Error syncing file:", error);
+		console.error("Error syncing files:", error);
 		return {
 			status: "error",
 			error: error instanceof Error ? error.message : "Unknown error",

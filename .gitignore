@@ -3,6 +3,7 @@
 # dependencies
 
 .DS_Store
+/code-files-test
 
 node_modules
 /.pnp
