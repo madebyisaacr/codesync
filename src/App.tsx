@@ -12,6 +12,7 @@ import {
 import classNames from "classnames";
 import { DirectoryEditor } from "./components/DirectoryEditor";
 import { PageStack, usePageStack } from "./components/PageStack";
+import { Spinner } from "./components/spinner/Spinner";
 
 framer.showUI({
 	position: "top left",
@@ -209,7 +210,8 @@ function HomePage() {
 
 	if (isLoading) {
 		return (
-			<div className="p-5">
+			<div className="size-full relative">
+				<Spinner />
 				<p>Loading...</p>
 			</div>
 		);
@@ -275,13 +277,11 @@ function HomePage() {
 			<div className="flex-col gap-2 p-3 w-full relative">
 				<div className="absolute top-0 inset-x-3 h-px bg-divider" />
 				<button
-					className="relative framer-button-primary"
+					className="relative framer-button-primary flex-row center gap-2"
 					onClick={toggleAutoSync}
 					disabled={!state.localDirectory}
 				>
-					{isSyncing && (
-						<span className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-					)}
+					<Spinner inline />
 					{isSyncing ? "Syncing..." : autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
 				</button>
 			</div>
