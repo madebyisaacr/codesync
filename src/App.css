@@ -62,6 +62,9 @@ main {
 	padding: 8px 12px;
 	background: var(--framer-color-bg-secondary);
 	border-radius: 6px;
+	overflow: hidden;
+	word-wrap: break-word;
+	white-space: normal;
 }
 
 .fileList {
@@ -83,6 +86,13 @@ main {
 .fileName {
 	font-size: 14px;
 	color: var(--framer-color-text);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	flex: 1;
+	margin-right: 8px;
+	direction: rtl;
+	text-align: left;
 }
 
 .syncStatus {
@@ -129,30 +139,53 @@ main {
 
 .syncButton {
 	width: 100%;
-	margin-top: 16px;
+	margin-top: 20px;
+	background-color: #0099ff;
+	color: white;
+	transition: background-color 0.3s ease;
+}
+
+.syncButton:hover:not(:disabled) {
+	background-color: #007acc;
+}
+
+.syncButton.active {
+	background-color: #00cc66;
+}
+
+.syncButton.active:hover:not(:disabled) {
+	background-color: #00994d;
+}
+
+.syncButton:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+@keyframes spin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .syncButton.syncing {
 	position: relative;
-	color: transparent;
+	padding-left: 30px;
 }
 
-.syncButton.syncing::after {
+.syncButton.syncing::before {
 	content: "";
 	position: absolute;
+	left: 10px;
+	top: 50%;
+	transform: translateY(-50%);
 	width: 16px;
 	height: 16px;
-	top: 50%;
-	left: 50%;
-	margin: -8px 0 0 -8px;
 	border: 2px solid rgba(255, 255, 255, 0.3);
 	border-top-color: white;
 	border-radius: 50%;
-	animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-	to {
-		transform: rotate(360deg);
-	}
+	animation: spin 1s linear infinite;
 }

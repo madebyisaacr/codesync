@@ -1,5 +1,12 @@
 import { framer } from "framer-plugin";
-import { CodeFile, FileMapping, PluginState, SyncStatus } from "./types";
+import {
+	CodeFile,
+	FileMapping,
+	PluginState,
+	SyncStatus,
+	LocalChanges,
+	LocalFileChange,
+} from "./types";
 import { CodeFile as FramerCodeFile } from "framer-plugin";
 
 export const STORAGE_KEY = "codesync-state";
@@ -68,30 +75,59 @@ export async function setServerDirectory(directory: string): Promise<boolean> {
 	}
 }
 
-export async function writeFileToServer(fileName: string, content: string): Promise<boolean> {
+export async function getLocalChanges(): Promise<LocalChanges> {
 	try {
-		const response = await fetch(`${SERVER_URL}/write-file`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ fileName, content }),
-		});
-
+		const response = await fetch(`${SERVER_URL}/local-changes`);
 		if (!response.ok) {
-			const error = await response.json();
-			throw new Error(error.error || "Failed to write file");
+			throw new Error("Failed to get local changes");
+		}
+		return await response.json();
+	} catch (error) {
+		console.error("Error getting local changes:", error);
+		return { changes: [] };
+	}
+}
+
+async function updateFramerFile(change: LocalFileChange): Promise<void> {
+	try {
+		const files = await framer.unstable_getCodeFiles();
+		const existingFile = files.find((f) => f.name === change.path);
+
+		if (change.type === "unlink") {
+			if (existingFile) {
+				await existingFile.remove();
+			}
+		} else if (change.content) {
+			if (existingFile) {
+				await existingFile.setFileContent(change.content);
+			} else {
+				await framer.unstable_createCodeFile(change.path, change.content);
+			}
+		}
+	} catch (error) {
+		console.error(`Error updating Framer file ${change.path}:`, error);
+		throw error;
+	}
+}
+
+export async function syncLocalChangesToFramer(): Promise<SyncStatus> {
+	try {
+		const { changes } = await getLocalChanges();
+		if (changes.length === 0) {
+			return { status: "success" };
 		}
 
-		return true;
-	} catch (error) {
-		console.error("Error writing file to server:", error);
-		if (error instanceof Error && error.message.includes("Failed to fetch")) {
-			throw new Error(
-				"Could not connect to local server. Make sure the server is running on port 3000."
-			);
+		// Process each change
+		for (const change of changes) {
+			await updateFramerFile(change);
 		}
-		throw error;
+
+		return { status: "success" };
+	} catch (error) {
+		return {
+			status: "error",
+			error: error instanceof Error ? error.message : "Failed to sync local changes",
+		};
 	}
 }
 
@@ -126,15 +162,34 @@ export async function syncFileToLocal(
 		const result = await response.json();
 		console.log("Sync result:", result);
 
-		return {
-			status: "synced",
-			lastSync: new Date(),
-		};
+		return { status: "success" };
 	} catch (error) {
 		console.error("Error syncing files:", error);
 		return {
 			status: "error",
 			error: error instanceof Error ? error.message : "Unknown error",
+		};
+	}
+}
+
+// Two-way sync function
+export async function performTwoWaySync(localDirectory: string): Promise<SyncStatus> {
+	try {
+		// First sync local changes to Framer
+		const localSyncStatus = await syncLocalChangesToFramer();
+		if (localSyncStatus.status === "error") {
+			return localSyncStatus;
+		}
+
+		// Then sync Framer changes to local
+		const framerFiles = await getFramerCodeFiles();
+		const framerSyncStatus = await syncFileToLocal(framerFiles, localDirectory);
+
+		return framerSyncStatus;
+	} catch (error) {
+		return {
+			status: "error",
+			error: error instanceof Error ? error.message : "Failed to perform two-way sync",
 		};
 	}
 }
