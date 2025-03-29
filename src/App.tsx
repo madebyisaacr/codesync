@@ -10,6 +10,8 @@ import {
 	performTwoWaySync,
 } from "./utils";
 import classNames from "classnames";
+import { DirectoryEditor } from "./components/DirectoryEditor";
+import { PageStack, usePageStack } from "./components/PageStack";
 
 framer.showUI({
 	position: "top left",
@@ -18,6 +20,18 @@ framer.showUI({
 });
 
 export function App() {
+	return (
+		<main className="size-full overflow-hidden select-none">
+			<div className="absolute top-0 inset-x-3 h-px bg-divider z-10" />
+			<PageStack>
+				<HomePage />
+			</PageStack>
+		</main>
+	);
+}
+
+function HomePage() {
+	const { openPage } = usePageStack();
 	const [state, setState] = useState<PluginState>({
 		localDirectory: null,
 		fileMappings: [],
@@ -182,6 +196,17 @@ export function App() {
 		}
 	};
 
+	const onClickSelectDirectory = () => {
+		openPage(
+			<DirectoryEditor
+				directoryInput={directoryInput}
+				onDirectoryChange={handleDirectoryChange}
+				onSaveDirectory={handleSaveDirectory}
+				currentDirectory={state.localDirectory}
+			/>
+		);
+	};
+
 	if (isLoading) {
 		return (
 			<div className="p-5">
@@ -191,32 +216,15 @@ export function App() {
 	}
 
 	return (
-		<main className="size-full overflow-hidden flex-col select-none">
-			<div className="absolute top-0 inset-x-3 h-px bg-divider" />
+		<div className="size-full flex-col">
 			<div className="p-3 w-full flex-col gap-3 flex-1 overflow-y-auto overflow-x-hidden">
 				<p>Two-way sync between Framer and files on your computer.</p>
-				<div className="w-full h-px shrink-0 bg-divider" />
-				<div className="flex-col gap-2 w-full">
-					<input
-						type="text"
-						value={directoryInput}
-						onChange={handleDirectoryChange}
-						placeholder="Enter directory path"
-						className="w-full"
-					/>
-					<button className="w-full framer-button-primary" onClick={handleSaveDirectory}>
-						Save Directory
-					</button>
-				</div>
-				{state.localDirectory && (
-					<div className="p-2.5 flex-col gap-1 bg-secondary rounded">
-						<span className="font-semibold">Current Directory:</span>
-						<p className="break-words whitespace-normal flex-col">{state.localDirectory}</p>
-					</div>
-				)}
+				<button onClick={onClickSelectDirectory} className="bg-secondary">
+					Change Directory
+				</button>
 				<div className="w-full h-px shrink-0 bg-divider" />
 				<div className="flex-col gap-2">
-					<span className="font-semibold">Code Files:</span>
+					<span className="font-semibold">Code Files</span>
 					{framerFiles.map((file) => {
 						const status = state.fileMappings.find((m) => m.framerFileId === file.id)?.status
 							.status;
@@ -277,6 +285,6 @@ export function App() {
 					{isSyncing ? "Syncing..." : autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
 				</button>
 			</div>
-		</main>
+		</div>
 	);
 }
