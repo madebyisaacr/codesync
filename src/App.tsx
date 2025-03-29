@@ -281,8 +281,16 @@ function HomePage() {
 					onClick={toggleAutoSync}
 					disabled={!state.localDirectory}
 				>
-					<Spinner inline />
-					{isSyncing ? "Syncing..." : autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
+					{isSyncing ? (
+						<>
+							<Spinner inline />
+							Syncing...
+						</>
+					) : autoSyncEnabled ? (
+						"Pause Sync"
+					) : (
+						"Resume Sync"
+					)}
 				</button>
 			</div>
 		</div>
