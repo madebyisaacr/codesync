@@ -55,7 +55,6 @@ export function App() {
 				status: {
 					status: "synced",
 					lastSync: new Date(),
-					framerTimestamp: Date.now(),
 				},
 			}));
 
@@ -66,7 +65,17 @@ export function App() {
 				lastSyncTimestamp: Date.now(),
 			}));
 
-			// framer.notify("Sync completed successfully", { variant: "success" });
+			// Show sync results
+			if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
+				framer.notify(`Updated ${syncStatus.updatedFiles.length} files from Framer`, {
+					variant: "success",
+				});
+			}
+			if (syncStatus.skippedFiles && syncStatus.skippedFiles.length > 0) {
+				framer.notify(`Preserved ${syncStatus.skippedFiles.length} local changes`, {
+					variant: "info",
+				});
+			}
 		} catch (error) {
 			console.error("Error during sync:", error);
 			framer.notify("Error during sync", { variant: "error" });
@@ -188,7 +197,9 @@ export function App() {
 			<div className="fileList">
 				{framerFiles.map((file) => (
 					<div key={file.id} className="fileItem">
-						<span className="fileName">{file.name}</span>
+						<span className="fileName" title={file.name}>
+							{file.name}
+						</span>
 						<span
 							className={`syncStatus ${
 								state.fileMappings.find((m) => m.framerFileId === file.id)?.status.status ||

@@ -125,45 +125,51 @@ app.post("/sync-directory", async (req, res) => {
 		// Get list of existing files in the directory
 		const existingFiles = await fs.readdir(currentDirectory, { recursive: true });
 
-		// Create a set of filenames from Framer
-		const framerFiles = new Set(files.map((f) => f.name));
+		// Create a map of filenames from Framer
+		const framerFiles = new Map(files.map((f) => [f.name, f.content]));
 
-		// Delete files that don't exist in Framer
-		const deletedFiles = [];
+		// Track results
+		const results = {
+			skipped: [] as string[],
+			updated: [] as string[],
+			deleted: [] as string[],
+		};
+
+		// Handle existing files
 		for (const file of existingFiles) {
-			if (!framerFiles.has(file)) {
-				try {
-					const fullPath = path.join(currentDirectory, file);
-					await fs.unlink(fullPath);
-					deletedFiles.push(file);
-					console.log(`Deleted file: ${file}`);
-				} catch (error) {
-					console.error(`Error deleting file ${file}:`, error);
-				}
+			const framerContent = framerFiles.get(file);
+			if (!framerContent) {
+				// File exists locally but not in Framer - don't delete it
+				continue;
+			}
+
+			try {
+				const fullPath = path.join(currentDirectory, file);
+				await fs.writeFile(fullPath, framerContent, "utf-8");
+				results.updated.push(file);
+			} catch (error) {
+				console.error(`Error processing file ${file}:`, error);
 			}
 		}
 
-		// Write or update files from Framer
-		const updatedFiles = [];
-		for (const file of files) {
-			try {
-				const fullPath = path.join(currentDirectory, file.name);
-				// Ensure the directory exists before writing
-				const directory = path.dirname(fullPath);
-				await fs.mkdir(directory, { recursive: true });
-
-				await fs.writeFile(fullPath, file.content, "utf-8");
-				updatedFiles.push(file.name);
-				console.log(`Updated file: ${file.name}`);
-			} catch (error) {
-				console.error(`Error writing file ${file.name}:`, error);
+		// Add new files from Framer
+		for (const [name, content] of framerFiles) {
+			if (!existingFiles.includes(name)) {
+				try {
+					const fullPath = path.join(currentDirectory, name);
+					const directory = path.dirname(fullPath);
+					await fs.mkdir(directory, { recursive: true });
+					await fs.writeFile(fullPath, content, "utf-8");
+					results.updated.push(name);
+				} catch (error) {
+					console.error(`Error writing new file ${name}:`, error);
+				}
 			}
 		}
 
 		res.json({
 			success: true,
-			deletedFiles,
-			updatedFiles,
+			...results,
 		});
 	} catch (error) {
 		console.error("Error syncing directory:", error);

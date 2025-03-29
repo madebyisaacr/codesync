@@ -145,13 +145,19 @@ export async function syncFileToLocal(
 			};
 		}
 
+		// Add timestamps to files
+		const filesWithTimestamps = files.map((file) => ({
+			...file,
+			timestamp: Date.now(),
+		}));
+
 		// Sync all files at once
 		const response = await fetch(`${SERVER_URL}/sync-directory`, {
 			method: "POST",
 			headers: {
 				"Content-Type": "application/json",
 			},
-			body: JSON.stringify({ files }),
+			body: JSON.stringify({ files: filesWithTimestamps }),
 		});
 
 		if (!response.ok) {
@@ -162,7 +168,11 @@ export async function syncFileToLocal(
 		const result = await response.json();
 		console.log("Sync result:", result);
 
-		return { status: "success" };
+		return {
+			status: "success",
+			skippedFiles: result.skipped || [],
+			updatedFiles: result.updated || [],
+		};
 	} catch (error) {
 		console.error("Error syncing files:", error);
 		return {

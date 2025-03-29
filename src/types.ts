@@ -2,11 +2,14 @@ export interface CodeFile {
 	id: string;
 	name: string;
 	content: string;
+	timestamp?: number;
 }
 
 export interface SyncStatus {
 	status: "success" | "error";
 	error?: string;
+	skippedFiles?: string[];
+	updatedFiles?: string[];
 }
 
 export interface FileMapping {
