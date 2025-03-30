@@ -280,7 +280,7 @@ function HomePage() {
 				} catch (error) {
 					console.error("Error during sync polling:", error);
 				}
-			}, 2000);
+			}, 1000);
 		}
 
 		return () => {
