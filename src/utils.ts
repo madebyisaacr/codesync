@@ -131,6 +131,92 @@ export async function syncLocalChangesToFramer(): Promise<SyncStatus> {
 	}
 }
 
+export async function checkForConflicts(localDirectory: string): Promise<SyncStatus> {
+	try {
+		// First ensure the server knows about our directory
+		const directorySet = await setServerDirectory(localDirectory);
+		if (!directorySet) {
+			return {
+				status: "error",
+				error: "Failed to set directory on local server",
+			};
+		}
+
+		// Get files from both local and Framer
+		const framerFiles = await getFramerCodeFiles();
+		const localFiles = await getLocalFiles(localDirectory);
+
+		// Compare files and find conflicts
+		const conflicts: Array<{ fileId: string; localContent: string; framerContent: string }> = [];
+
+		for (const framerFile of framerFiles) {
+			const localFile = localFiles.find((f) => f.name === framerFile.name);
+			if (localFile && localFile.content !== framerFile.content) {
+				conflicts.push({
+					fileId: framerFile.id,
+					localContent: localFile.content,
+					framerContent: framerFile.content,
+				});
+			}
+		}
+
+		return {
+			status: conflicts.length > 0 ? "error" : "success",
+			conflicts,
+		};
+	} catch (error) {
+		return {
+			status: "error",
+			error: error instanceof Error ? error.message : "Failed to check for conflicts",
+		};
+	}
+}
+
+async function getLocalFiles(directory: string): Promise<CodeFile[]> {
+	try {
+		const response = await fetch(`${SERVER_URL}/get-files`);
+		if (!response.ok) {
+			throw new Error("Failed to get local files");
+		}
+		return await response.json();
+	} catch (error) {
+		console.error("Error getting local files:", error);
+		return [];
+	}
+}
+
+// One-way sync function (local to Framer only)
+export async function performSync(
+	localDirectory: string,
+	resolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>
+): Promise<SyncStatus> {
+	try {
+		// First check for conflicts, excluding resolved ones
+		const conflictStatus = await checkForConflicts(localDirectory);
+		if (conflictStatus.conflicts && conflictStatus.conflicts.length > 0) {
+			// Filter out resolved conflicts
+			const unresolvedConflicts = conflictStatus.conflicts.filter(
+				(conflict) => !resolvedConflicts?.some((resolved) => resolved.fileId === conflict.fileId)
+			);
+
+			if (unresolvedConflicts.length > 0) {
+				return {
+					...conflictStatus,
+					conflicts: unresolvedConflicts,
+				};
+			}
+		}
+
+		// If no unresolved conflicts, sync local changes to Framer
+		return await syncLocalChangesToFramer();
+	} catch (error) {
+		return {
+			status: "error",
+			error: error instanceof Error ? error.message : "Failed to perform sync",
+		};
+	}
+}
+
 export async function syncFileToLocal(
 	files: CodeFile[],
 	localDirectory: string

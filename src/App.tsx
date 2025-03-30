@@ -1,18 +1,21 @@
 import { framer } from "framer-plugin";
 import { useEffect, useState, useCallback } from "react";
 import "./App.css";
-import { CodeFile, FileMapping, PluginState } from "./types";
+import { CodeFile, FileMapping, PluginState, FileConflict } from "./types";
 import {
 	getFramerCodeFiles,
 	getLocalPathFromFramerName,
 	loadPluginState,
 	savePluginState,
-	performTwoWaySync,
+	performSync,
 } from "./utils";
 import classNames from "classnames";
 import { DirectoryPage, DirectoryEditor } from "./components/DirectoryEditor";
 import { PageStack, usePageStack } from "./components/PageStack";
 import { Spinner } from "./components/spinner/Spinner";
+import { ConflictResolver } from "./components/ConflictResolver";
+import { FileListItem } from "./components/FileListItem";
+import CheckIcon from "./components/CheckIcon";
 
 framer.showUI({
 	position: "top left",
@@ -41,61 +44,12 @@ function HomePage() {
 	const [framerFiles, setFramerFiles] = useState<CodeFile[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSyncing, setIsSyncing] = useState(false);
-	const [autoSyncEnabled, setAutoSyncEnabled] = useState(true);
-	const [overflowingFiles, setOverflowingFiles] = useState<Set<string>>(new Set());
-
-	// Function to perform sync
-	const performSync = useCallback(async () => {
-		if (!state.localDirectory) {
-			return;
-		}
-
-		setIsSyncing(true);
-		try {
-			// Perform two-way sync
-			const syncStatus = await performTwoWaySync(state.localDirectory);
-
-			if (syncStatus.status === "error") {
-				console.error("Sync error:", syncStatus.error);
-				framer.notify(`Sync error: ${syncStatus.error}`, { variant: "error" });
-				return;
-			}
-
-			// Get updated files from Framer
-			const files = await getFramerCodeFiles();
-			setFramerFiles(files);
-
-			// Update file mappings
-			const newMappings: FileMapping[] = files.map((file) => ({
-				framerFileId: file.id,
-				localPath: getLocalPathFromFramerName(file.name, state.localDirectory as string),
-				status: {
-					status: "synced",
-					lastSync: new Date(),
-				},
-			}));
-
-			// Update state with new mappings and sync timestamp
-			setState((prev) => ({
-				...prev,
-				fileMappings: newMappings,
-				lastSyncTimestamp: Date.now(),
-			}));
-
-			// Show sync results
-			if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
-				console.log(`Updated ${syncStatus.updatedFiles.length} files from Framer`);
-			}
-			if (syncStatus.skippedFiles && syncStatus.skippedFiles.length > 0) {
-				console.log(`Preserved ${syncStatus.skippedFiles.length} local changes`);
-			}
-		} catch (error) {
-			console.error("Error during sync:", error);
-			framer.notify("Error during sync", { variant: "error" });
-		} finally {
-			setIsSyncing(false);
-		}
-	}, [state.localDirectory]);
+	const [conflicts, setConflicts] = useState<FileConflict[]>([]);
+	const [isResolvingConflicts, setIsResolvingConflicts] = useState(false);
+	const [serverError, setServerError] = useState<string | null>(null);
+	const [resolvedConflicts, setResolvedConflicts] = useState<
+		Array<{ fileId: string; keepLocal: boolean }>
+	>([]);
 
 	useEffect(() => {
 		async function initialize() {
@@ -103,58 +57,25 @@ function HomePage() {
 				const [savedState, files] = await Promise.all([loadPluginState(), getFramerCodeFiles()]);
 				setState(savedState);
 				setFramerFiles(files);
-				if (savedState.localDirectory) {
-					// Perform initial sync if we have a directory
-					await performSync();
-				}
 			} catch (error) {
 				console.error("Failed to initialize:", error);
-				framer.notify("Failed to initialize plugin", { variant: "error" });
+				if (
+					error instanceof Error &&
+					(error.message.includes("Failed to fetch") ||
+						error.message.includes("connection refused"))
+				) {
+					setServerError(
+						"Could not connect to local server. Make sure the server is running on port 3000."
+					);
+				} else {
+					framer.notify("Failed to initialize plugin", { variant: "error" });
+				}
 			} finally {
 				setIsLoading(false);
 			}
 		}
 		initialize();
-	}, [performSync]);
-
-	// Subscribe to code file changes and auto-sync
-	useEffect(() => {
-		if (!autoSyncEnabled) return;
-
-		// Set up intervals for file checking and syncing
-		const fileCheckInterval = setInterval(async () => {
-			const currentFiles = await getFramerCodeFiles();
-			setFramerFiles(currentFiles);
-		}, 1000); // Check files every second
-
-		const syncInterval = setInterval(() => {
-			performSync();
-		}, 5000); // Sync every 5 seconds
-
-		// Cleanup intervals on unmount or when auto-sync is disabled
-		return () => {
-			clearInterval(fileCheckInterval);
-			clearInterval(syncInterval);
-		};
-	}, [autoSyncEnabled, performSync]);
-
-	useEffect(() => {
-		// Check for text overflow
-		const checkOverflow = () => {
-			const newOverflowingFiles = new Set<string>();
-			document.querySelectorAll("[data-filename-container]").forEach((container) => {
-				const span = container.querySelector("[data-filename-text]") as HTMLElement;
-				if (span && span.scrollWidth > span.offsetWidth) {
-					newOverflowingFiles.add(span.dataset.filenameText || "");
-				}
-			});
-			setOverflowingFiles(newOverflowingFiles);
-		};
-
-		checkOverflow();
-		window.addEventListener("resize", checkOverflow);
-		return () => window.removeEventListener("resize", checkOverflow);
-	}, [framerFiles]);
+	}, []);
 
 	const handleSaveDirectory = async (directoryInput: string) => {
 		if (!directoryInput.trim()) {
@@ -170,21 +91,9 @@ function HomePage() {
 			setState(newState);
 			await savePluginState(newState);
 			framer.notify(`Directory set to: ${directoryInput.trim()}`, { variant: "success" });
-
-			// Perform immediate sync when directory is set
-			await performSync();
 		} catch (error) {
 			console.error("Failed to save directory:", error);
 			framer.notify("Failed to save directory", { variant: "error" });
-		}
-	};
-
-	const toggleAutoSync = () => {
-		setAutoSyncEnabled(!autoSyncEnabled);
-		if (!autoSyncEnabled) {
-			framer.notify("Auto-sync enabled");
-		} else {
-			framer.notify("Auto-sync disabled");
 		}
 	};
 
@@ -197,6 +106,155 @@ function HomePage() {
 		);
 	};
 
+	const handleResolveConflict = async (fileId: string, keepLocal: boolean) => {
+		try {
+			// Update the file in Framer based on the user's choice
+			const file = framerFiles.find((f) => f.id === fileId);
+			if (!file) {
+				throw new Error(`File not found: ${fileId}`);
+			}
+
+			if (keepLocal && file.setFileContent) {
+				const conflict = conflicts.find((c) => c.file.id === fileId);
+				if (!conflict) {
+					throw new Error(`Conflict not found for file: ${fileId}`);
+				}
+				await file.setFileContent(conflict.localContent);
+			}
+
+			// Create updated resolved conflicts array
+			const updatedResolvedConflicts = [...resolvedConflicts, { fileId, keepLocal }];
+			setResolvedConflicts(updatedResolvedConflicts);
+
+			// Remove the resolved conflict
+			const remainingConflicts = conflicts.filter((c) => c.file.id !== fileId);
+			setConflicts(remainingConflicts);
+
+			// If this was the last conflict, exit conflict resolution mode and sync
+			if (remainingConflicts.length === 0) {
+				setIsResolvingConflicts(false);
+				await performSyncOperation(updatedResolvedConflicts);
+			}
+		} catch (error) {
+			console.error("Error resolving conflict:", error);
+			framer.notify("Error resolving conflict", { variant: "error" });
+		}
+	};
+
+	const performSyncOperation = useCallback(
+		async (currentResolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>) => {
+			if (!state.localDirectory) {
+				return;
+			}
+
+			setIsSyncing(true);
+			setServerError(null);
+			try {
+				const syncStatus = await performSync(
+					state.localDirectory,
+					currentResolvedConflicts ?? resolvedConflicts
+				);
+
+				if (syncStatus.status === "error") {
+					if (syncStatus.conflicts && syncStatus.conflicts.length > 0) {
+						const newConflicts: FileConflict[] = await Promise.all(
+							syncStatus.conflicts.map(async (conflict) => {
+								const file = framerFiles.find((f) => f.id === conflict.fileId);
+								if (!file) {
+									throw new Error(`File not found: ${conflict.fileId}`);
+								}
+								return {
+									file,
+									localContent: conflict.localContent,
+									framerContent: conflict.framerContent,
+								};
+							})
+						);
+						setConflicts(newConflicts);
+						setIsResolvingConflicts(true);
+						return;
+					}
+					if (
+						syncStatus.error?.includes("Failed to fetch") ||
+						syncStatus.error?.includes("connection refused")
+					) {
+						setServerError(
+							"Could not connect to local server. Make sure the server is running on port 3000."
+						);
+						return;
+					}
+					console.error("Sync error:", syncStatus.error);
+					framer.notify(`Sync error: ${syncStatus.error}`, { variant: "error" });
+					return;
+				}
+
+				// Clear resolved conflicts after successful sync
+				setResolvedConflicts([]);
+
+				// Get updated files from Framer
+				const files = await getFramerCodeFiles();
+				setFramerFiles(files);
+
+				// Update file mappings
+				const newMappings: FileMapping[] = files.map((file) => ({
+					framerFileId: file.id,
+					localPath: getLocalPathFromFramerName(file.name, state.localDirectory as string),
+					status: {
+						status: "synced",
+						lastSync: new Date(),
+					},
+				}));
+
+				// Update state with new mappings and sync timestamp
+				setState((prev) => ({
+					...prev,
+					fileMappings: newMappings,
+					lastSyncTimestamp: Date.now(),
+				}));
+
+				// Show sync results
+				if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
+					console.log(`Updated ${syncStatus.updatedFiles.length} files`);
+				}
+			} catch (error) {
+				console.error("Error during sync:", error);
+				if (
+					error instanceof Error &&
+					(error.message.includes("Failed to fetch") ||
+						error.message.includes("connection refused"))
+				) {
+					setServerError(
+						"Could not connect to local server. Make sure the server is running on port 3000."
+					);
+				} else {
+					framer.notify("Error during sync", { variant: "error" });
+				}
+			} finally {
+				setIsSyncing(false);
+			}
+		},
+		[state.localDirectory, framerFiles, resolvedConflicts]
+	);
+
+	useEffect(() => {
+		console.log("isResolvingConflicts", isResolvingConflicts);
+	}, [isResolvingConflicts]);
+
+	// Use isResolvingConflicts instead of conflicts.length for rendering
+	if (isResolvingConflicts) {
+		return (
+			<ConflictResolver
+				conflicts={conflicts}
+				onResolve={handleResolveConflict}
+				onBack={() => {
+					setIsResolvingConflicts(false);
+					setConflicts([]);
+				}}
+			/>
+		);
+	}
+
+	// Only show loading state if we're not in conflict resolution
 	if (isLoading) {
 		return (
 			<div className="size-full relative">
@@ -209,7 +267,8 @@ function HomePage() {
 	return (
 		<div className="size-full flex-col">
 			<div className="p-3 w-full flex-col gap-3 flex-1 overflow-y-auto overflow-x-hidden">
-				<p>Two-way sync between Framer and files on your computer.</p>
+				<p>Sync Framer code files to your local computer.</p>
+				{serverError && <div className="bg-error/10 text-error p-2 rounded">{serverError}</div>}
 				{isLoading ? (
 					"Loading..."
 				) : state.localDirectory ? (
@@ -244,38 +303,8 @@ function HomePage() {
 						framerFiles.map((file) => {
 							const status = state.fileMappings.find((m) => m.framerFileId === file.id)?.status
 								.status;
-							const isOverflowing = overflowingFiles.has(file.name);
 							return (
-								<div
-									key={file.id}
-									className="flex-row justify-between items-center h-6 shrink-0 gap-2 pl-0.5 text-secondary"
-								>
-									<CodeFileIcon />
-									<div className="relative flex-1 min-w-0" data-filename-container>
-										<span
-											data-filename-text={file.name}
-											className={classNames(
-												"whitespace-nowrap overflow-hidden block w-full",
-												isOverflowing ? "text-right" : "text-left"
-											)}
-											style={isOverflowing ? { direction: "rtl" } : undefined}
-											title={file.name}
-										>
-											{file.name}
-										</span>
-										<div
-											className={classNames(
-												"absolute inset-y-0 w-6",
-												isOverflowing ? "left-0" : "right-0"
-											)}
-											style={{
-												opacity: isOverflowing ? 0.9 : 0,
-												background: isOverflowing
-													? "linear-gradient(to left, transparent, var(--framer-color-bg))"
-													: "linear-gradient(to right, transparent, var(--framer-color-bg))",
-											}}
-										/>
-									</div>
+								<FileListItem key={file.id} file={file}>
 									{status && (
 										<span
 											className={classNames(
@@ -286,7 +315,7 @@ function HomePage() {
 											{status == "synced" ? <CheckIcon /> : status}
 										</span>
 									)}
-								</div>
+								</FileListItem>
 							);
 						})
 					)}
@@ -297,54 +326,13 @@ function HomePage() {
 					<div className="absolute top-0 inset-x-3 h-px bg-divider" />
 					<button
 						className="relative framer-button-primary flex-row center gap-2"
-						onClick={toggleAutoSync}
+						onClick={() => performSyncOperation()}
 					>
 						{isSyncing && <Spinner inline className="absolute right-2 top-[calc(50%-6px)]" />}
-						{autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
+						Sync Now
 					</button>
 				</div>
 			)}
 		</div>
-	);
-}
-
-function CodeFileIcon() {
-	return (
-		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12">
-			<path
-				d="M 4 3 L 1 6 L 4 9"
-				fill="transparent"
-				strokeWidth="2"
-				stroke="#999"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			></path>
-			<path
-				d="M 8 3 L 11 6 L 8 9"
-				fill="transparent"
-				strokeWidth="2"
-				stroke="#999"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			></path>
-		</svg>
-	);
-}
-
-function CheckIcon() {
-	return (
-		<svg
-			xmlns="http://www.w3.org/2000/svg"
-			width="16"
-			height="16"
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth="2"
-			strokeLinecap="round"
-			strokeLinejoin="round"
-		>
-			<path d="M5 12l5 5l10 -10" />
-		</svg>
 	);
 }

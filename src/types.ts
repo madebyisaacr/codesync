@@ -3,6 +3,7 @@ export interface CodeFile {
 	name: string;
 	content: string;
 	timestamp?: number;
+	setFileContent?: (content: string) => Promise<void>;
 }
 
 export interface SyncStatus {
@@ -10,6 +11,11 @@ export interface SyncStatus {
 	error?: string;
 	skippedFiles?: string[];
 	updatedFiles?: string[];
+	conflicts?: Array<{
+		fileId: string;
+		localContent: string;
+		framerContent: string;
+	}>;
 }
 
 export interface FileMapping {
@@ -28,6 +34,7 @@ export interface PluginState {
 	localDirectory: string | null;
 	fileMappings: FileMapping[];
 	lastSyncTimestamp?: number;
+	hasResolvedInitialConflicts?: boolean;
 }
 
 export interface LocalFileChange {
@@ -39,4 +46,10 @@ export interface LocalFileChange {
 
 export interface LocalChanges {
 	changes: LocalFileChange[];
+}
+
+export interface FileConflict {
+	file: CodeFile;
+	localContent: string;
+	framerContent: string;
 }

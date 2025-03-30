@@ -208,6 +208,45 @@ app.post("/write-file", async (req, res) => {
 	}
 });
 
+// Get list of files in the directory
+app.get("/get-files", async (req, res) => {
+	try {
+		if (!currentDirectory) {
+			return res.status(400).json({ error: "Directory not set" });
+		}
+
+		const files: Array<{ name: string; content: string }> = [];
+		await walkDirectory(currentDirectory, files);
+		res.json(files);
+	} catch (error) {
+		console.error("Error getting files:", error);
+		res.status(500).json({ error: "Failed to get files" });
+	}
+});
+
+async function walkDirectory(dir: string, files: Array<{ name: string; content: string }>) {
+	const entries = await fs.readdir(dir, { withFileTypes: true });
+
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		const relativePath = path.relative(currentDirectory!, fullPath);
+
+		if (entry.isDirectory()) {
+			await walkDirectory(fullPath, files);
+		} else {
+			try {
+				const content = await fs.readFile(fullPath, "utf-8");
+				files.push({
+					name: relativePath,
+					content,
+				});
+			} catch (error) {
+				console.error(`Error reading file ${fullPath}:`, error);
+			}
+		}
+	}
+}
+
 app.listen(port, () => {
 	console.log(`Server running at http://localhost:${port}`);
 });
