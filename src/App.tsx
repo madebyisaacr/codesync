@@ -85,6 +85,13 @@ function HomePage() {
 					if (syncStatus.conflicts && syncStatus.conflicts.length > 0) {
 						// Only show conflict resolver on initial sync if we haven't done initial resolution
 						if (!hasInitialConflictResolution && !isSyncMode) {
+							// Update Framer files with local content before showing conflict resolver
+							for (const conflict of syncStatus.conflicts) {
+								const file = framerFiles.find((f) => f.id === conflict.fileId);
+								if (file?.setFileContent) {
+									await file.setFileContent(conflict.localContent);
+								}
+							}
 							const newConflicts: FileConflict[] = await Promise.all(
 								syncStatus.conflicts.map(async (conflict) => {
 									const file = framerFiles.find((f) => f.id === conflict.fileId);
@@ -178,7 +185,7 @@ function HomePage() {
 	// Effect to auto-start sync when directory is set
 	useEffect(() => {
 		// Only attempt auto-sync if we have a directory and we're not already syncing
-		if (state.localDirectory && !isSyncMode && !isLoading) {
+		if (state.localDirectory && !isSyncMode && !isLoading && !hasAttemptedInitialSync.current) {
 			(async () => {
 				try {
 					const response = await fetch("http://localhost:3000/local-changes");
@@ -189,6 +196,7 @@ function HomePage() {
 					const syncResult = await performSyncOperation();
 					if (syncResult) {
 						setIsSyncMode(true);
+						hasAttemptedInitialSync.current = true;
 					}
 				} catch (error) {
 					console.error("Failed to start automatic sync:", error);
@@ -227,7 +235,7 @@ function HomePage() {
 							setIsSyncMode(false);
 							console.log("set sync mode to false");
 							const newConflicts: FileConflict[] = await Promise.all(
-								syncStatus.conflicts.map(async (conflict) => {
+								syncStatus.conflicts?.map(async (conflict) => {
 									const file = framerFiles.find((f) => f.id === conflict.fileId);
 									if (!file) {
 										throw new Error(`File not found: ${conflict.fileId}`);
@@ -237,13 +245,13 @@ function HomePage() {
 										localContent: conflict.localContent,
 										framerContent: conflict.framerContent,
 									};
-								})
+								}) ?? []
 							);
 							setConflicts(newConflicts);
 							setIsResolvingConflicts(true);
 						} else {
 							// After initial resolution, always keep local version
-							for (const conflict of syncStatus.conflicts) {
+							for (const conflict of syncStatus.conflicts ?? []) {
 								const file = framerFiles.find((f) => f.id === conflict.fileId);
 								if (file?.setFileContent) {
 									await file.setFileContent(conflict.localContent);
@@ -470,11 +478,13 @@ function HomePage() {
 						className="relative framer-button-primary flex-row center gap-2"
 						onClick={async () => {
 							if (isSyncMode) {
-								setIsSyncMode(false);
+								// Clear the polling interval first
 								if (pollInterval.current) {
 									clearInterval(pollInterval.current);
+									pollInterval.current = undefined;
 								}
-								// Reset sync state when stopping
+								// Reset all sync-related state
+								setIsSyncMode(false);
 								setIsSyncing(false);
 								setResolvedConflicts([]);
 								setConflicts([]);
