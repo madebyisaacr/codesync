@@ -25,8 +25,8 @@ export function DirectoryPage({ onSaveDirectory, currentDirectory }: DirectoryPa
 			{currentDirectory && (
 				<>
 					<div className="w-full h-px shrink-0 bg-divider" />
-					<div className="p-2.5 flex-col gap-1 bg-secondary rounded">
-						<span className="font-semibold">Current Directory:</span>
+					<div className="flex-col gap-1">
+						<span className="font-semibold">Current Directory</span>
 						<p className="break-words whitespace-normal flex-col">{currentDirectory}</p>
 					</div>
 				</>

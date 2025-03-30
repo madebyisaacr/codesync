@@ -237,8 +237,8 @@ function HomePage() {
 					</div>
 				)}
 				<div className="w-full h-px shrink-0 bg-divider" />
-				<div className="flex-col gap-2 flex-1">
-					<span className="font-semibold">Code Files</span>
+				<div className="flex-col flex-1">
+					<span className="font-semibold mb-2">Code Files</span>
 					{framerFiles.length === 0 ? (
 						<div className="flex-col pb-4 center text-center gap-1 text-balance flex-1">
 							<span>No code files found</span>
@@ -252,8 +252,9 @@ function HomePage() {
 							return (
 								<div
 									key={file.id}
-									className="flex-row justify-between items-center px-2.5 py-2 gap-2 bg-secondary rounded"
+									className="flex-row justify-between items-center h-6 shrink-0 gap-2 pl-0.5 text-secondary"
 								>
+									<CodeFileIcon />
 									<div className="relative flex-1 min-w-0" data-filename-container>
 										<span
 											data-filename-text={file.name}
@@ -274,19 +275,21 @@ function HomePage() {
 											style={{
 												opacity: isOverflowing ? 0.9 : 0,
 												background: isOverflowing
-													? "linear-gradient(to left, transparent, var(--color-bg-secondary))"
-													: "linear-gradient(to right, transparent, var(--color-bg-secondary))",
+													? "linear-gradient(to left, transparent, var(--framer-color-bg))"
+													: "linear-gradient(to right, transparent, var(--framer-color-bg))",
 											}}
 										/>
 									</div>
-									<span
-										className={classNames(
-											"text-xs rounded capitalize shrink-0",
-											status === "error" ? "text-error" : "text-secondary"
-										)}
-									>
-										{status || "Not Synced"}
-									</span>
+									{status && (
+										<span
+											className={classNames(
+												"text-xs rounded capitalize shrink-0",
+												status === "error" ? "text-error" : "text-secondary"
+											)}
+										>
+											{status == "synced" ? <CheckIcon /> : status}
+										</span>
+									)}
 								</div>
 							);
 						})
@@ -300,19 +303,52 @@ function HomePage() {
 						className="relative framer-button-primary flex-row center gap-2"
 						onClick={toggleAutoSync}
 					>
-						{isSyncing ? (
-							<>
-								<Spinner inline />
-								Syncing...
-							</>
-						) : autoSyncEnabled ? (
-							"Pause Sync"
-						) : (
-							"Resume Sync"
-						)}
+						{isSyncing && <Spinner inline className="absolute right-2 top-[calc(50%-6px)]" />}
+						{autoSyncEnabled ? "Pause Sync" : "Resume Sync"}
 					</button>
 				</div>
 			)}
 		</div>
+	);
+}
+
+function CodeFileIcon() {
+	return (
+		<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12">
+			<path
+				d="M 4 3 L 1 6 L 4 9"
+				fill="transparent"
+				strokeWidth="2"
+				stroke="#999"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			></path>
+			<path
+				d="M 8 3 L 11 6 L 8 9"
+				fill="transparent"
+				strokeWidth="2"
+				stroke="#999"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+			></path>
+		</svg>
+	);
+}
+
+function CheckIcon() {
+	return (
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			width="16"
+			height="16"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+		>
+			<path d="M5 12l5 5l10 -10" />
+		</svg>
 	);
 }
