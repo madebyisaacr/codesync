@@ -1,5 +1,5 @@
 import { framer } from "framer-plugin";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import "./App.css";
 import { CodeFile, FileMapping, PluginState, FileConflict } from "./types";
 import {
@@ -50,6 +50,98 @@ function HomePage() {
 	const [resolvedConflicts, setResolvedConflicts] = useState<
 		Array<{ fileId: string; keepLocal: boolean }>
 	>([]);
+	const [isSyncMode, setIsSyncMode] = useState(false);
+	const [hasInitialConflictResolution, setHasInitialConflictResolution] = useState(false);
+	const pollInterval = useRef<NodeJS.Timeout>();
+
+	// Cleanup polling on unmount
+	useEffect(() => {
+		return () => {
+			if (pollInterval.current) {
+				clearInterval(pollInterval.current);
+			}
+		};
+	}, []);
+
+	// Start polling when entering sync mode
+	useEffect(() => {
+		if (isSyncMode && state.localDirectory) {
+			const directory = state.localDirectory;
+			// Poll every 2 seconds for local changes
+			pollInterval.current = setInterval(async () => {
+				try {
+					const syncStatus = await performSync(
+						directory,
+						resolvedConflicts,
+						hasInitialConflictResolution
+					);
+					if (syncStatus.status === "error") {
+						// Only show conflict resolver if we haven't done initial resolution
+						if (!hasInitialConflictResolution) {
+							setIsSyncMode(false);
+							const newConflicts: FileConflict[] = await Promise.all(
+								syncStatus.conflicts.map(async (conflict) => {
+									const file = framerFiles.find((f) => f.id === conflict.fileId);
+									if (!file) {
+										throw new Error(`File not found: ${conflict.fileId}`);
+									}
+									return {
+										file,
+										localContent: conflict.localContent,
+										framerContent: conflict.framerContent,
+									};
+								})
+							);
+							setConflicts(newConflicts);
+							setIsResolvingConflicts(true);
+						} else {
+							// After initial resolution, always keep local version
+							for (const conflict of syncStatus.conflicts) {
+								const file = framerFiles.find((f) => f.id === conflict.fileId);
+								if (file?.setFileContent) {
+									await file.setFileContent(conflict.localContent);
+								}
+							}
+						}
+					}
+
+					// Update files and mappings on successful sync
+					const files = await getFramerCodeFiles();
+					setFramerFiles(files);
+
+					// Update file mappings
+					const newMappings: FileMapping[] = files.map((file) => ({
+						framerFileId: file.id,
+						localPath: getLocalPathFromFramerName(file.name, directory),
+						status: {
+							status: "synced",
+							lastSync: new Date(),
+						},
+					}));
+
+					// Update state with new mappings and sync timestamp
+					setState((prev) => ({
+						...prev,
+						fileMappings: newMappings,
+						lastSyncTimestamp: Date.now(),
+					}));
+
+					// Show sync results
+					if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
+						console.log(`Updated ${syncStatus.updatedFiles.length} files`);
+					}
+				} catch (error) {
+					console.error("Error during sync polling:", error);
+				}
+			}, 2000);
+		}
+
+		return () => {
+			if (pollInterval.current) {
+				clearInterval(pollInterval.current);
+			}
+		};
+	}, [isSyncMode, state.localDirectory, framerFiles, hasInitialConflictResolution]);
 
 	useEffect(() => {
 		async function initialize() {
@@ -130,9 +222,11 @@ function HomePage() {
 			const remainingConflicts = conflicts.filter((c) => c.file.id !== fileId);
 			setConflicts(remainingConflicts);
 
-			// If this was the last conflict, exit conflict resolution mode and sync
+			// If this was the last conflict, enter sync mode and start syncing
 			if (remainingConflicts.length === 0) {
 				setIsResolvingConflicts(false);
+				setIsSyncMode(true);
+				setHasInitialConflictResolution(true);
 				await performSyncOperation(updatedResolvedConflicts);
 			}
 		} catch (error) {
@@ -152,28 +246,11 @@ function HomePage() {
 			try {
 				const syncStatus = await performSync(
 					state.localDirectory,
-					currentResolvedConflicts ?? resolvedConflicts
+					currentResolvedConflicts ?? resolvedConflicts,
+					hasInitialConflictResolution
 				);
 
 				if (syncStatus.status === "error") {
-					if (syncStatus.conflicts && syncStatus.conflicts.length > 0) {
-						const newConflicts: FileConflict[] = await Promise.all(
-							syncStatus.conflicts.map(async (conflict) => {
-								const file = framerFiles.find((f) => f.id === conflict.fileId);
-								if (!file) {
-									throw new Error(`File not found: ${conflict.fileId}`);
-								}
-								return {
-									file,
-									localContent: conflict.localContent,
-									framerContent: conflict.framerContent,
-								};
-							})
-						);
-						setConflicts(newConflicts);
-						setIsResolvingConflicts(true);
-						return;
-					}
 					if (
 						syncStatus.error?.includes("Failed to fetch") ||
 						syncStatus.error?.includes("connection refused")
@@ -183,6 +260,39 @@ function HomePage() {
 						);
 						return;
 					}
+
+					// Handle conflicts if they exist
+					if (syncStatus.conflicts && syncStatus.conflicts.length > 0) {
+						// Only show conflict resolver if we haven't done initial resolution
+						if (!hasInitialConflictResolution) {
+							const newConflicts: FileConflict[] = await Promise.all(
+								syncStatus.conflicts.map(async (conflict) => {
+									const file = framerFiles.find((f) => f.id === conflict.fileId);
+									if (!file) {
+										throw new Error(`File not found: ${conflict.fileId}`);
+									}
+									return {
+										file,
+										localContent: conflict.localContent,
+										framerContent: conflict.framerContent,
+									};
+								})
+							);
+							setConflicts(newConflicts);
+							setIsResolvingConflicts(true);
+							setIsSyncMode(false);
+						} else {
+							// After initial resolution, always keep local version
+							for (const conflict of syncStatus.conflicts) {
+								const file = framerFiles.find((f) => f.id === conflict.fileId);
+								if (file?.setFileContent) {
+									await file.setFileContent(conflict.localContent);
+								}
+							}
+						}
+						return;
+					}
+
 					console.error("Sync error:", syncStatus.error);
 					framer.notify(`Sync error: ${syncStatus.error}`, { variant: "error" });
 					return;
@@ -233,7 +343,7 @@ function HomePage() {
 				setIsSyncing(false);
 			}
 		},
-		[state.localDirectory, framerFiles, resolvedConflicts]
+		[state.localDirectory, framerFiles, resolvedConflicts, hasInitialConflictResolution]
 	);
 
 	useEffect(() => {
@@ -326,10 +436,19 @@ function HomePage() {
 					<div className="absolute top-0 inset-x-3 h-px bg-divider" />
 					<button
 						className="relative framer-button-primary flex-row center gap-2"
-						onClick={() => performSyncOperation()}
+						onClick={() => {
+							if (isSyncMode) {
+								setIsSyncMode(false);
+								if (pollInterval.current) {
+									clearInterval(pollInterval.current);
+								}
+							} else {
+								performSyncOperation();
+							}
+						}}
 					>
 						{isSyncing && <Spinner inline className="absolute right-2 top-[calc(50%-6px)]" />}
-						Sync Now
+						{isSyncMode ? "Stop Syncing" : "Start Syncing"}
 					</button>
 				</div>
 			)}

@@ -188,26 +188,33 @@ async function getLocalFiles(directory: string): Promise<CodeFile[]> {
 // One-way sync function (local to Framer only)
 export async function performSync(
 	localDirectory: string,
-	resolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>
+	resolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>,
+	ignoreConflicts: boolean = false
 ): Promise<SyncStatus> {
+	console.log("performSync", localDirectory, "ignoreConflicts:", ignoreConflicts);
 	try {
-		// First check for conflicts, excluding resolved ones
-		const conflictStatus = await checkForConflicts(localDirectory);
-		if (conflictStatus.conflicts && conflictStatus.conflicts.length > 0) {
-			// Filter out resolved conflicts
-			const unresolvedConflicts = conflictStatus.conflicts.filter(
-				(conflict) => !resolvedConflicts?.some((resolved) => resolved.fileId === conflict.fileId)
-			);
-
-			if (unresolvedConflicts.length > 0) {
-				return {
-					...conflictStatus,
-					conflicts: unresolvedConflicts,
-				};
+		if (!ignoreConflicts) {
+			// First check for conflicts, excluding resolved ones
+			const conflictStatus = await checkForConflicts(localDirectory);
+			console.log("conflictStatus", conflictStatus);
+			if (conflictStatus.conflicts && conflictStatus.conflicts.length > 0) {
+				// Filter out resolved conflicts
+				const unresolvedConflicts = conflictStatus.conflicts.filter(
+					(conflict) => !resolvedConflicts?.some((resolved) => resolved.fileId === conflict.fileId)
+				);
+				console.log("unresolvedConflicts", unresolvedConflicts);
+				if (unresolvedConflicts.length > 0) {
+					console.log("returning unresolved conflicts");
+					return {
+						...conflictStatus,
+						conflicts: unresolvedConflicts,
+					};
+				}
 			}
 		}
 
-		// If no unresolved conflicts, sync local changes to Framer
+		// If ignoring conflicts or no unresolved conflicts, sync local changes to Framer
+		console.log("syncing local changes to Framer");
 		return await syncLocalChangesToFramer();
 	} catch (error) {
 		return {
