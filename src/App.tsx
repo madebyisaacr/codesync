@@ -79,6 +79,7 @@ function HomePage() {
 						// Only show conflict resolver if we haven't done initial resolution
 						if (!hasInitialConflictResolution) {
 							setIsSyncMode(false);
+							console.log("set sync mode to false");
 							const newConflicts: FileConflict[] = await Promise.all(
 								syncStatus.conflicts.map(async (conflict) => {
 									const file = framerFiles.find((f) => f.id === conflict.fileId);
@@ -238,7 +239,7 @@ function HomePage() {
 	const performSyncOperation = useCallback(
 		async (currentResolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>) => {
 			if (!state.localDirectory) {
-				return;
+				return false;
 			}
 
 			setIsSyncing(true);
@@ -258,13 +259,13 @@ function HomePage() {
 						setServerError(
 							"Could not connect to local server. Make sure the server is running on port 3000."
 						);
-						return;
+						return false;
 					}
 
 					// Handle conflicts if they exist
 					if (syncStatus.conflicts && syncStatus.conflicts.length > 0) {
-						// Only show conflict resolver if we haven't done initial resolution
-						if (!hasInitialConflictResolution) {
+						// Only show conflict resolver on initial sync if we haven't done initial resolution
+						if (!hasInitialConflictResolution && !isSyncMode) {
 							const newConflicts: FileConflict[] = await Promise.all(
 								syncStatus.conflicts.map(async (conflict) => {
 									const file = framerFiles.find((f) => f.id === conflict.fileId);
@@ -281,8 +282,9 @@ function HomePage() {
 							setConflicts(newConflicts);
 							setIsResolvingConflicts(true);
 							setIsSyncMode(false);
+							console.log("set sync mode to false");
 						} else {
-							// After initial resolution, always keep local version
+							// For subsequent syncs or after initial resolution, always keep local version
 							for (const conflict of syncStatus.conflicts) {
 								const file = framerFiles.find((f) => f.id === conflict.fileId);
 								if (file?.setFileContent) {
@@ -290,12 +292,12 @@ function HomePage() {
 								}
 							}
 						}
-						return;
+						return false;
 					}
 
 					console.error("Sync error:", syncStatus.error);
 					framer.notify(`Sync error: ${syncStatus.error}`, { variant: "error" });
-					return;
+					return false;
 				}
 
 				// Clear resolved conflicts after successful sync
@@ -326,6 +328,13 @@ function HomePage() {
 				if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
 					console.log(`Updated ${syncStatus.updatedFiles.length} files`);
 				}
+
+				// Set initial conflict resolution to true after successful sync
+				if (!hasInitialConflictResolution) {
+					setHasInitialConflictResolution(true);
+				}
+
+				return true;
 			} catch (error) {
 				console.error("Error during sync:", error);
 				if (
@@ -339,11 +348,12 @@ function HomePage() {
 				} else {
 					framer.notify("Error during sync", { variant: "error" });
 				}
+				return false;
 			} finally {
 				setIsSyncing(false);
 			}
 		},
-		[state.localDirectory, framerFiles, resolvedConflicts, hasInitialConflictResolution]
+		[state.localDirectory, framerFiles, resolvedConflicts, hasInitialConflictResolution, isSyncMode]
 	);
 
 	// Use isResolvingConflicts instead of conflicts.length for rendering
@@ -432,14 +442,31 @@ function HomePage() {
 					<div className="absolute top-0 inset-x-3 h-px bg-divider" />
 					<button
 						className="relative framer-button-primary flex-row center gap-2"
-						onClick={() => {
+						onClick={async () => {
 							if (isSyncMode) {
 								setIsSyncMode(false);
 								if (pollInterval.current) {
 									clearInterval(pollInterval.current);
 								}
+								// Reset sync state when stopping
+								setIsSyncing(false);
+								setResolvedConflicts([]);
+								setConflicts([]);
+								setIsResolvingConflicts(false);
+								setHasInitialConflictResolution(false);
 							} else {
-								performSyncOperation();
+								// Reset sync state before starting
+								setIsSyncing(true);
+								setResolvedConflicts([]);
+								setConflicts([]);
+								setIsResolvingConflicts(false);
+								setHasInitialConflictResolution(false);
+								// Start sync process
+								const syncResult = await performSyncOperation();
+								// Only set sync mode to true if sync was successful
+								if (syncResult) {
+									setIsSyncMode(true);
+								}
 							}
 						}}
 					>
