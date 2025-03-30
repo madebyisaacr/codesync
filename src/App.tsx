@@ -346,10 +346,6 @@ function HomePage() {
 		[state.localDirectory, framerFiles, resolvedConflicts, hasInitialConflictResolution]
 	);
 
-	useEffect(() => {
-		console.log("isResolvingConflicts", isResolvingConflicts);
-	}, [isResolvingConflicts]);
-
 	// Use isResolvingConflicts instead of conflicts.length for rendering
 	if (isResolvingConflicts) {
 		return (

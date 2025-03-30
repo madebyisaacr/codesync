@@ -191,20 +191,16 @@ export async function performSync(
 	resolvedConflicts?: Array<{ fileId: string; keepLocal: boolean }>,
 	ignoreConflicts: boolean = false
 ): Promise<SyncStatus> {
-	console.log("performSync", localDirectory, "ignoreConflicts:", ignoreConflicts);
 	try {
 		if (!ignoreConflicts) {
 			// First check for conflicts, excluding resolved ones
 			const conflictStatus = await checkForConflicts(localDirectory);
-			console.log("conflictStatus", conflictStatus);
 			if (conflictStatus.conflicts && conflictStatus.conflicts.length > 0) {
 				// Filter out resolved conflicts
 				const unresolvedConflicts = conflictStatus.conflicts.filter(
 					(conflict) => !resolvedConflicts?.some((resolved) => resolved.fileId === conflict.fileId)
 				);
-				console.log("unresolvedConflicts", unresolvedConflicts);
 				if (unresolvedConflicts.length > 0) {
-					console.log("returning unresolved conflicts");
 					return {
 						...conflictStatus,
 						conflicts: unresolvedConflicts,
@@ -214,7 +210,6 @@ export async function performSync(
 		}
 
 		// If ignoring conflicts or no unresolved conflicts, sync local changes to Framer
-		console.log("syncing local changes to Framer");
 		return await syncLocalChangesToFramer();
 	} catch (error) {
 		return {
