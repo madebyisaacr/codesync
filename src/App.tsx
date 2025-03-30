@@ -16,8 +16,8 @@ import { Spinner } from "./components/spinner/Spinner";
 
 framer.showUI({
 	position: "top left",
-	width: 320,
-	height: 480,
+	width: 300,
+	height: 450,
 	resizable: true,
 });
 
@@ -84,14 +84,10 @@ function HomePage() {
 
 			// Show sync results
 			if (syncStatus.updatedFiles && syncStatus.updatedFiles.length > 0) {
-				framer.notify(`Updated ${syncStatus.updatedFiles.length} files from Framer`, {
-					variant: "success",
-				});
+				console.log(`Updated ${syncStatus.updatedFiles.length} files from Framer`);
 			}
 			if (syncStatus.skippedFiles && syncStatus.skippedFiles.length > 0) {
-				framer.notify(`Preserved ${syncStatus.skippedFiles.length} local changes`, {
-					variant: "info",
-				});
+				console.log(`Preserved ${syncStatus.skippedFiles.length} local changes`);
 			}
 		} catch (error) {
 			console.error("Error during sync:", error);
@@ -269,7 +265,7 @@ function HomePage() {
 										</span>
 										<div
 											className={classNames(
-												"absolute inset-y-0 w-8",
+												"absolute inset-y-0 w-6",
 												isOverflowing ? "left-0" : "right-0"
 											)}
 											style={{
